@@ -1,0 +1,10 @@
+{
+  "id": "kline-charts",
+  "name": "Kline Charts",
+  "version": "0.1.0",
+  "minAppVersion": "1.4.0",
+  "description": "Render candlestick K-line charts with trade annotations (entry points, trend lines, SL/TP) directly in your notes.",
+  "author": "Junyi Xia",
+  "authorUrl": "",
+  "isDesktopOnly": true
+}

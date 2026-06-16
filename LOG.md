@@ -19,8 +19,32 @@
 - `MarkdownRenderChild` 包裹，`onunload` 清理 chart 实例
 - `ResizeObserver` 处理容器宽度变化
 
-**待做（P1 起）**
-- P1：YAML 解析 + 从内联 `data` 渲染（替换硬编码）
+---
+
+## 2026-06-16 · P1 YAML 解析 + 内联 data 渲染
+
+**做了什么**
+- 新增 `src/parser.ts`：js-yaml 解析代码块 → `KlineConfig`，`configToCandles()` 把 `data` 数组转 `Candle[]`，含行级校验和友好报错
+- 更新 `src/renderer.ts`：移除硬编码数据；新增 `renderError()`、`renderNoData()` 两个状态函数；`renderKlineChart()` 改为接受必填 `candles` 参数
+- 更新 `main.ts`：解析 YAML → 按 data 有无分发到 render / noData / error 三路
+
+**三态逻辑**
+- 有 `data` → 渲染 K 线图
+- 无 `data`（只写了 symbol/range）→ 占位符（"No data — Fetch coming soon"）
+- YAML 出错 / 缺 symbol → 红色报错块
+
+**代码块格式（P1 起生效）**
+```yaml
+symbol: BTCUSDT
+interval: 1d
+from: 2024-01-01
+to: 2024-01-20
+data:
+  - [1704067200, 42626, 44706, 42588, 44186, 48123]
+  - ...
+```
+
+**待做**
 - P2：标注渲染（entry / trendline / sl / tp）
 - P3：Settings + Binance/AV provider + Fetch 按钮 + 写回代码块
 - P4：Alpha Vantage + i18n + 深浅色主题 + 报错 UX

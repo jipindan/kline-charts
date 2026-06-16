@@ -18,28 +18,14 @@ export class KlineSettingTab extends PluginSettingTab {
       .setName('Default data provider')
       .setDesc('Data source for fetching K-line data')
       .addDropdown(dd => dd
-        .addOption('binance', 'Binance')
-        .addOption('alphavantage', 'Alpha Vantage (coming soon)')
+        .addOption('binance', 'Binance (crypto)')
+        .addOption('yahoo', 'Yahoo Finance (stocks / ETF / forex / crypto)')
         .setValue(this.plugin.settings.defaultProvider)
         .onChange(async (v) => {
           this.plugin.settings.defaultProvider = v as any;
           await this.plugin.saveSettings();
-          this.display();
         })
       );
-
-    if (this.plugin.settings.defaultProvider === 'alphavantage') {
-      new Setting(containerEl)
-        .setName('Alpha Vantage API key')
-        .addText(text => text
-          .setPlaceholder('Enter API key')
-          .setValue(this.plugin.settings.alphaVantageKey)
-          .onChange(async (v) => {
-            this.plugin.settings.alphaVantageKey = v;
-            await this.plugin.saveSettings();
-          })
-        );
-    }
 
     new Setting(containerEl)
       .setName('Default interval')
@@ -54,6 +40,43 @@ export class KlineSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.defaultInterval)
         .onChange(async (v) => {
           this.plugin.settings.defaultInterval = v;
+          await this.plugin.saveSettings();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName('Chart height')
+      .setDesc(`${this.plugin.settings.chartHeight}px`)
+      .addSlider(sl => sl
+        .setLimits(200, 600, 20)
+        .setValue(this.plugin.settings.chartHeight)
+        .onChange(async (v) => {
+          this.plugin.settings.chartHeight = v;
+          await this.plugin.saveSettings();
+          this.display();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName('Show volume')
+      .setDesc('Display volume bars below the chart')
+      .addToggle(tg => tg
+        .setValue(this.plugin.settings.showVolume)
+        .onChange(async (v) => {
+          this.plugin.settings.showVolume = v;
+          await this.plugin.saveSettings();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName('Color style')
+      .setDesc('Candlestick color convention')
+      .addDropdown(dd => dd
+        .addOption('international', 'International (green up, red down)')
+        .addOption('cn', 'CN (red up, green down)')
+        .setValue(this.plugin.settings.colorStyle)
+        .onChange(async (v) => {
+          this.plugin.settings.colorStyle = v as any;
           await this.plugin.saveSettings();
         })
       );

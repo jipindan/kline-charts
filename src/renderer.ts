@@ -1,4 +1,4 @@
-import { Candle, KlineConfig, KlinePluginSettings, Annotation, OhlcField } from './types';
+import { Candle, KlineConfig, KlinePluginSettings, RenderOptions, ColorStyle, Annotation, OhlcField } from './types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -6,20 +6,25 @@ function isDarkTheme(): boolean {
   return document.body.classList.contains('theme-dark');
 }
 
-function getColors(dark: boolean) {
+const GREEN = '#26a69a';
+const RED   = '#ef5350';
+
+function getColors(dark: boolean, style: ColorStyle) {
+  const up   = style === 'cn' ? RED : GREEN;
+  const down = style === 'cn' ? GREEN : RED;
   return {
     text:     dark ? '#9ca3af' : '#6b7280',
     grid:     dark ? '#2d3748' : '#e5e7eb',
-    up:       '#26a69a',
-    down:     '#ef5350',
-    upVol:    '#26a69a4d',
-    downVol:  '#ef53504d',
+    up,
+    down,
+    upVol:    up + '4d',
+    downVol:  down + '4d',
     entry:    '#f59e0b',
-    trend:    '#60a5fa',      // clean blue
-    posTP:    '#26a69a20',   // TP box fill (green, very translucent)
-    posSL:    '#ef535020',   // SL box fill (red, very translucent)
-    posTPTxt: '#26a69aCC',
-    posSLTxt: '#ef5350CC',
+    trend:    '#60a5fa',
+    posTP:    GREEN + '20',
+    posSL:    RED + '20',
+    posTPTxt: GREEN + 'CC',
+    posSLTxt: RED + 'CC',
   };
 }
 
@@ -41,7 +46,6 @@ function fmtDate(unix: number, intraday: boolean): string {
   return `${mm}/${dd} ${hh}:${mn}`;
 }
 
-/** "2024-01-15" → UTC day key string for matching annotation dates to candles */
 function dayKey(unix: number): string {
   const d = new Date(unix * 1000);
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
@@ -49,9 +53,14 @@ function dayKey(unix: number): string {
 
 // ── Error / no-data states ────────────────────────────────────────────────
 
-export function renderError(container: HTMLElement, message: string): void {
+export function renderError(container: HTMLElement, message: string, onRetry?: () => void): void {
   container.empty();
-  container.createDiv({ cls: 'kline-error', text: `⚠ ${message}` });
+  const el = container.createDiv({ cls: 'kline-error' });
+  el.createSpan({ text: `⚠ ${message}` });
+  if (onRetry) {
+    const btn = el.createEl('button', { cls: 'kline-retry-btn', text: 'Retry' });
+    btn.addEventListener('click', (e) => { e.preventDefault(); onRetry(); });
+  }
 }
 
 export function renderNoData(
@@ -86,11 +95,9 @@ export function renderLoading(container: HTMLElement, config: KlineConfig): void
 // ── Canvas chart renderer ─────────────────────────────────────────────────
 
 const PAD        = { top: 20, right: 72, bottom: 36, left: 8 };
-const TOTAL_H    = 380;
 const VOL_RATIO  = 0.2;
 const VOL_GAP    = 6;
 const FONT       = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-const FONT_BOLD  = 'bold 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 const GRID_LINES = 5;
 const MAX_BODY_W = 14;
 
@@ -106,19 +113,16 @@ function drawAnnotations(
   chartW: number,
   col: ReturnType<typeof getColors>,
 ) {
-  // Build date string → candle index map (UTC)
   const dateMap = new Map<string, number>();
   candles.forEach((c, i) => dateMap.set(dayKey(c.time), i));
 
   for (const ann of annotations) {
 
-    // ── Position (TP/SL boxes) ─────────────────────────────────────
     if (ann.type === 'position') {
       const i1 = dateMap.get(ann.entry_date);
       const i2 = dateMap.get(ann.exit_date);
       if (i1 === undefined || i2 === undefined) continue;
 
-      // X coords: candle center (wick) of entry → candle center of exit
       const xLeft  = toX(i1);
       const xRight = toX(i2);
       const boxW   = xRight - xLeft;
@@ -127,29 +131,23 @@ function drawAnnotations(
       const yTP    = toY(ann.tp);
       const ySL    = toY(ann.sl);
 
-      // TP box (entry → tp, green, no border)
       ctx.fillStyle = col.posTP;
       ctx.fillRect(xLeft, yTP, boxW, yEntry - yTP);
 
-      // SL box (entry → sl, red, no border)
       ctx.fillStyle = col.posSL;
       ctx.fillRect(xLeft, yEntry, boxW, ySL - yEntry);
 
-      // Labels
       ctx.font         = FONT;
       ctx.textBaseline = 'bottom';
       ctx.textAlign    = 'left';
 
-      // TP label (top-left of TP box)
       ctx.fillStyle = col.posTPTxt;
       ctx.fillText(`TP ${fmtPrice(ann.tp)}`, xLeft + 3, yTP - 2);
 
-      // SL label (bottom-left of SL box)
       ctx.textBaseline = 'top';
       ctx.fillStyle = col.posSLTxt;
       ctx.fillText(`SL ${fmtPrice(ann.sl)}`, xLeft + 3, ySL + 2);
 
-      // Entry label
       if (ann.label) {
         ctx.textBaseline = 'bottom';
         ctx.fillStyle    = col.entry;
@@ -157,7 +155,6 @@ function drawAnnotations(
       }
     }
 
-    // ── Entry (standalone, without position) ───────────────────────
     if (ann.type === 'entry') {
       const idx = dateMap.get(ann.date);
       if (idx === undefined) continue;
@@ -182,7 +179,6 @@ function drawAnnotations(
       ctx.fillText(label, x, y - S - 3);
     }
 
-    // ── Trendline ──────────────────────────────────────────────────
     if (ann.type === 'trendline') {
       const [d1, f1] = ann.from;
       const [d2, f2] = ann.to;
@@ -212,19 +208,22 @@ function drawAnnotations(
 export function renderKlineChart(
   container: HTMLElement,
   candles: Candle[],
-  annotations?: Annotation[],
+  annotations: Annotation[] | undefined,
+  options: RenderOptions,
 ): () => void {
   container.empty();
+
+  const totalH     = options.chartHeight;
+  const showVolume = options.showVolume;
 
   const wrapper = container.createDiv({ cls: 'kline-chart-wrapper' });
   const canvas  = wrapper.createEl('canvas');
   canvas.style.display = 'block';
   canvas.style.width   = '100%';
-  canvas.style.height  = `${TOTAL_H}px`;
+  canvas.style.height  = `${totalH}px`;
 
   const intraday = candles.length > 1 && (candles[1].time - candles[0].time) < 86400;
 
-  // Pre-compute bounds — include annotation prices so position boxes are always visible
   const annPrices: number[] = (annotations ?? []).flatMap(a => {
     if (a.type === 'position') return [a.entry, a.sl, a.tp];
     if (a.type === 'entry') return [a.price];
@@ -235,30 +234,36 @@ export function renderKlineChart(
   const pPad = (pMax - pMin) * 0.05;
   const yMax = pMax + pPad;
   const yMin = pMin - pPad;
-  const vMax = Math.max(...candles.map(c => c.volume));
+  const vMax = showVolume ? Math.max(...candles.map(c => c.volume)) : 0;
 
   function draw() {
     const totalW = wrapper.clientWidth || 640;
     const dpr    = window.devicePixelRatio || 1;
 
     canvas.width  = totalW * dpr;
-    canvas.height = TOTAL_H * dpr;
+    canvas.height = totalH * dpr;
 
     const ctx = canvas.getContext('2d')!;
     ctx.scale(dpr, dpr);
 
     const dark = isDarkTheme();
-    const col  = getColors(dark);
+    const col  = getColors(dark, options.colorStyle);
 
-    // Layout
-    const chartW   = totalW - PAD.left - PAD.right;
-    const chartH   = TOTAL_H - PAD.top - PAD.bottom;
-    const priceH   = Math.floor(chartH * (1 - VOL_RATIO) - VOL_GAP / 2);
-    const volH     = Math.floor(chartH * VOL_RATIO - VOL_GAP / 2);
+    const chartW = totalW - PAD.left - PAD.right;
+    const chartH = totalH - PAD.top - PAD.bottom;
+
+    let priceH: number, volH: number, volTop: number;
+    if (showVolume) {
+      priceH = Math.floor(chartH * (1 - VOL_RATIO) - VOL_GAP / 2);
+      volH   = Math.floor(chartH * VOL_RATIO - VOL_GAP / 2);
+      volTop = PAD.top + priceH + VOL_GAP;
+    } else {
+      priceH = chartH;
+      volH   = 0;
+      volTop = 0;
+    }
     const priceTop = PAD.top;
-    const volTop   = PAD.top + priceH + VOL_GAP;
 
-    // Coordinate mappers
     const slotW = chartW / candles.length;
     const bodyW = Math.max(1, Math.min(Math.floor(slotW * 0.7), MAX_BODY_W));
 
@@ -293,14 +298,16 @@ export function renderKlineChart(
     }
 
     // Volume divider
-    ctx.strokeStyle = col.grid;
-    ctx.lineWidth   = 0.5;
-    ctx.beginPath();
-    ctx.moveTo(PAD.left, volTop);
-    ctx.lineTo(PAD.left + chartW, volTop);
-    ctx.stroke();
+    if (showVolume) {
+      ctx.strokeStyle = col.grid;
+      ctx.lineWidth   = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(PAD.left, volTop);
+      ctx.lineTo(PAD.left + chartW, volTop);
+      ctx.stroke();
+    }
 
-    // Annotations FIRST (behind candles so boxes don't cover K-lines)
+    // Annotations FIRST (behind candles)
     if (annotations && annotations.length > 0) {
       ctx.save();
       ctx.beginPath();
@@ -310,7 +317,7 @@ export function renderKlineChart(
       ctx.restore();
     }
 
-    // Candlesticks (on top of position boxes)
+    // Candlesticks
     for (let i = 0; i < candles.length; i++) {
       const c    = candles[i];
       const x    = toX(i);
@@ -332,16 +339,19 @@ export function renderKlineChart(
     }
 
     // Volume bars
-    for (let i = 0; i < candles.length; i++) {
-      const c    = candles[i];
-      const x    = toX(i);
-      const isUp = c.close >= c.open;
-      const vY   = toVolY(c.volume);
-      ctx.fillStyle = isUp ? col.upVol : col.downVol;
-      ctx.fillRect(x - bodyW / 2, vY, bodyW, volTop + volH - vY);
+    if (showVolume) {
+      for (let i = 0; i < candles.length; i++) {
+        const c    = candles[i];
+        const x    = toX(i);
+        const isUp = c.close >= c.open;
+        const vY   = toVolY(c.volume);
+        ctx.fillStyle = isUp ? col.upVol : col.downVol;
+        ctx.fillRect(x - bodyW / 2, vY, bodyW, volTop + volH - vY);
+      }
     }
 
     // Time labels
+    const timeLabelY = showVolume ? volTop + volH + 6 : priceTop + priceH + 6;
     ctx.fillStyle    = col.text;
     ctx.font         = FONT;
     ctx.textAlign    = 'center';
@@ -350,7 +360,7 @@ export function renderKlineChart(
     const maxLabels = Math.max(2, Math.floor(chartW / 72));
     const step      = Math.max(1, Math.ceil(candles.length / maxLabels));
     for (let i = 0; i < candles.length; i += step) {
-      ctx.fillText(fmtDate(candles[i].time, intraday), toX(i), volTop + volH + 6);
+      ctx.fillText(fmtDate(candles[i].time, intraday), toX(i), timeLabelY);
     }
   }
 

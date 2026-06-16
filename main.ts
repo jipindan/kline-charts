@@ -2,8 +2,9 @@ import { Plugin, MarkdownRenderChild, MarkdownPostProcessorContext, TFile } from
 import { parseKlineConfig, configToCandles } from './src/parser';
 import { renderKlineChart, renderNoData, renderLoading, renderError } from './src/renderer';
 import { fetchBinanceKlines } from './src/binance';
+import { fetchYahooKlines } from './src/yahoo';
 import { KlineSettingTab } from './src/settings';
-import { KlinePluginSettings, KlineConfig, DEFAULT_SETTINGS } from './src/types';
+import { KlinePluginSettings, KlineConfig, RenderOptions, DEFAULT_SETTINGS } from './src/types';
 
 export default class KlineChartsPlugin extends Plugin {
   settings: KlinePluginSettings = DEFAULT_SETTINGS;
@@ -46,12 +47,17 @@ class KlineRenderChild extends MarkdownRenderChild {
     this.ctx = ctx;
   }
 
+  private get renderOptions(): RenderOptions {
+    const s = this.plugin.settings;
+    return { chartHeight: s.chartHeight, showVolume: s.showVolume, colorStyle: s.colorStyle };
+  }
+
   render() {
     try {
       const config = parseKlineConfig(this.source);
       if (config.data && config.data.length > 0) {
         const candles = configToCandles(config);
-        this.cleanup = renderKlineChart(this.containerEl, candles, config.annotations);
+        this.cleanup = renderKlineChart(this.containerEl, candles, config.annotations, this.renderOptions);
       } else {
         renderNoData(this.containerEl, config, this.plugin.settings, () => this.fetchAndWriteBack(config));
       }
@@ -71,11 +77,11 @@ class KlineRenderChild extends MarkdownRenderChild {
       if (provider === 'binance') {
         data = await fetchBinanceKlines(config.symbol, interval, config.from, config.to);
       } else {
-        throw new Error('Alpha Vantage provider is not yet implemented');
+        data = await fetchYahooKlines(config.symbol, interval, config.from, config.to);
       }
       await this.writeBack(data);
     } catch (e) {
-      renderError(this.containerEl, (e as Error).message);
+      renderError(this.containerEl, (e as Error).message, () => this.fetchAndWriteBack(config));
     }
   }
 

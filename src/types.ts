@@ -35,7 +35,8 @@ export interface PositionAnnotation {
 
 export type Annotation = EntryAnnotation | TrendlineAnnotation | PositionAnnotation;
 
-export type DataProvider = 'binance' | 'alphavantage';
+export type DataProvider = 'binance' | 'yahoo';
+export type ColorStyle = 'international' | 'cn';
 
 export interface KlineConfig {
   symbol: string;
@@ -47,16 +48,24 @@ export interface KlineConfig {
   data?: (number[])[];
 }
 
+export interface RenderOptions {
+  chartHeight: number;
+  showVolume: boolean;
+  colorStyle: ColorStyle;
+}
+
 export interface KlinePluginSettings {
   defaultProvider: DataProvider;
-  alphaVantageKey: string;
   defaultInterval: string;
-  language: 'auto' | 'en' | 'zh';
+  chartHeight: number;
+  showVolume: boolean;
+  colorStyle: ColorStyle;
 }
 
 export const DEFAULT_SETTINGS: KlinePluginSettings = {
   defaultProvider: 'binance',
-  alphaVantageKey: '',
   defaultInterval: '1d',
-  language: 'auto',
+  chartHeight: 380,
+  showVolume: true,
+  colorStyle: 'international',
 };

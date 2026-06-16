@@ -98,8 +98,7 @@ data:
 ```
 
 **待做**
-- P4：Alpha Vantage + i18n + 深浅色主题 + 报错 UX
-- P5：README/LICENSE + 上架合规 + 社区 PR
+- P5：上架 Obsidian 社区市场（git init + GitHub repo + PR to obsidian-releases）
 
 ---
 
@@ -127,3 +126,25 @@ data:
 - ETHUSDT 1d 2024-06-01→06-30：Fetch 成功，30 根 K 线 + volume 渲染正确
 - Settings tab 正常显示，Binance / 1 Day 默认值正确
 - Bundle: 113KB（+7KB）
+
+---
+
+## 2026-06-16 · P4 Yahoo Finance + Settings 扩展
+
+**做了什么**
+- 新增 `src/yahoo.ts`：Yahoo Finance chart API provider（覆盖美股/ETF/指数/外汇/加密）
+- 更新 `src/types.ts`：DataProvider 改为 `'binance' | 'yahoo'`，删除 alphaVantageKey/language，新增 RenderOptions（chartHeight/showVolume/colorStyle）
+- 更新 `src/renderer.ts`：`getColors()` 支持 CN/International 涨跌色互换；`renderKlineChart()` 接受 RenderOptions（动态高度、volume 开关）
+- 更新 `src/settings.ts`：5 项设置（provider / interval / chart height slider / volume toggle / color style）
+- Bundle: 117KB
+
+---
+
+## 2026-06-16 · Error UX + README/LICENSE（i18n 已删除）
+
+**做了什么**
+- 报错 UX：fetch 失败时显示 retry 按钮，点击重试；样式优化（flex 布局 + hover 效果）
+- 新增 `README.md`：功能概述、使用方法、代码块格式、annotation 类型、Settings 说明、symbol 格式参考
+- 新增 `LICENSE`：MIT
+- i18n 模块（`src/i18n.ts`）曾添加 en/zh 双语，后因不必要删除，改回纯英文硬编码
+- Bundle: 117KB

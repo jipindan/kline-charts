@@ -27,7 +27,7 @@ __export(main_exports, {
   default: () => KlineChartsPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian3 = require("obsidian");
+var import_obsidian4 = require("obsidian");
 
 // node_modules/js-yaml/dist/js-yaml.mjs
 var __create = Object.create;
@@ -2460,23 +2460,24 @@ function configToCandles(config) {
 function isDarkTheme() {
   return document.body.classList.contains("theme-dark");
 }
-function getColors(dark) {
+var GREEN = "#26a69a";
+var RED = "#ef5350";
+function getColors(dark, style) {
+  const up = style === "cn" ? RED : GREEN;
+  const down = style === "cn" ? GREEN : RED;
   return {
     text: dark ? "#9ca3af" : "#6b7280",
     grid: dark ? "#2d3748" : "#e5e7eb",
-    up: "#26a69a",
-    down: "#ef5350",
-    upVol: "#26a69a4d",
-    downVol: "#ef53504d",
+    up,
+    down,
+    upVol: up + "4d",
+    downVol: down + "4d",
     entry: "#f59e0b",
     trend: "#60a5fa",
-    // clean blue
-    posTP: "#26a69a20",
-    // TP box fill (green, very translucent)
-    posSL: "#ef535020",
-    // SL box fill (red, very translucent)
-    posTPTxt: "#26a69aCC",
-    posSLTxt: "#ef5350CC"
+    posTP: GREEN + "20",
+    posSL: RED + "20",
+    posTPTxt: GREEN + "CC",
+    posSLTxt: RED + "CC"
   };
 }
 function fmtPrice(price) {
@@ -2499,9 +2500,17 @@ function dayKey(unix) {
   const d = new Date(unix * 1e3);
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
-function renderError(container, message) {
+function renderError(container, message, onRetry) {
   container.empty();
-  container.createDiv({ cls: "kline-error", text: `\u26A0 ${message}` });
+  const el = container.createDiv({ cls: "kline-error" });
+  el.createSpan({ text: `\u26A0 ${message}` });
+  if (onRetry) {
+    const btn = el.createEl("button", { cls: "kline-retry-btn", text: "Retry" });
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      onRetry();
+    });
+  }
 }
 function renderNoData(container, config, settings, onFetch) {
   var _a, _b, _c;
@@ -2525,7 +2534,6 @@ function renderLoading(container, config) {
   el.createDiv({ cls: "kline-spinner" });
 }
 var PAD = { top: 20, right: 72, bottom: 36, left: 8 };
-var TOTAL_H = 380;
 var VOL_RATIO = 0.2;
 var VOL_GAP = 6;
 var FONT = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
@@ -2605,13 +2613,15 @@ function drawAnnotations(ctx, annotations, candles, toX, toY, slotW, chartW, col
     }
   }
 }
-function renderKlineChart(container, candles, annotations) {
+function renderKlineChart(container, candles, annotations, options) {
   container.empty();
+  const totalH = options.chartHeight;
+  const showVolume = options.showVolume;
   const wrapper = container.createDiv({ cls: "kline-chart-wrapper" });
   const canvas = wrapper.createEl("canvas");
   canvas.style.display = "block";
   canvas.style.width = "100%";
-  canvas.style.height = `${TOTAL_H}px`;
+  canvas.style.height = `${totalH}px`;
   const intraday = candles.length > 1 && candles[1].time - candles[0].time < 86400;
   const annPrices = (annotations != null ? annotations : []).flatMap((a) => {
     if (a.type === "position") return [a.entry, a.sl, a.tp];
@@ -2623,22 +2633,29 @@ function renderKlineChart(container, candles, annotations) {
   const pPad = (pMax - pMin) * 0.05;
   const yMax = pMax + pPad;
   const yMin = pMin - pPad;
-  const vMax = Math.max(...candles.map((c) => c.volume));
+  const vMax = showVolume ? Math.max(...candles.map((c) => c.volume)) : 0;
   function draw() {
     const totalW = wrapper.clientWidth || 640;
     const dpr = window.devicePixelRatio || 1;
     canvas.width = totalW * dpr;
-    canvas.height = TOTAL_H * dpr;
+    canvas.height = totalH * dpr;
     const ctx = canvas.getContext("2d");
     ctx.scale(dpr, dpr);
     const dark = isDarkTheme();
-    const col = getColors(dark);
+    const col = getColors(dark, options.colorStyle);
     const chartW = totalW - PAD.left - PAD.right;
-    const chartH = TOTAL_H - PAD.top - PAD.bottom;
-    const priceH = Math.floor(chartH * (1 - VOL_RATIO) - VOL_GAP / 2);
-    const volH = Math.floor(chartH * VOL_RATIO - VOL_GAP / 2);
+    const chartH = totalH - PAD.top - PAD.bottom;
+    let priceH, volH, volTop;
+    if (showVolume) {
+      priceH = Math.floor(chartH * (1 - VOL_RATIO) - VOL_GAP / 2);
+      volH = Math.floor(chartH * VOL_RATIO - VOL_GAP / 2);
+      volTop = PAD.top + priceH + VOL_GAP;
+    } else {
+      priceH = chartH;
+      volH = 0;
+      volTop = 0;
+    }
     const priceTop = PAD.top;
-    const volTop = PAD.top + priceH + VOL_GAP;
     const slotW = chartW / candles.length;
     const bodyW = Math.max(1, Math.min(Math.floor(slotW * 0.7), MAX_BODY_W));
     function toX(i) {
@@ -2666,12 +2683,14 @@ function renderKlineChart(container, candles, annotations) {
       ctx.textBaseline = "middle";
       ctx.fillText(fmtPrice(price), PAD.left + chartW + 4, y);
     }
-    ctx.strokeStyle = col.grid;
-    ctx.lineWidth = 0.5;
-    ctx.beginPath();
-    ctx.moveTo(PAD.left, volTop);
-    ctx.lineTo(PAD.left + chartW, volTop);
-    ctx.stroke();
+    if (showVolume) {
+      ctx.strokeStyle = col.grid;
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(PAD.left, volTop);
+      ctx.lineTo(PAD.left + chartW, volTop);
+      ctx.stroke();
+    }
     if (annotations && annotations.length > 0) {
       ctx.save();
       ctx.beginPath();
@@ -2697,14 +2716,17 @@ function renderKlineChart(container, candles, annotations) {
       ctx.fillStyle = clr;
       ctx.fillRect(x - bodyW / 2, top, bodyW, bH);
     }
-    for (let i = 0; i < candles.length; i++) {
-      const c = candles[i];
-      const x = toX(i);
-      const isUp = c.close >= c.open;
-      const vY = toVolY(c.volume);
-      ctx.fillStyle = isUp ? col.upVol : col.downVol;
-      ctx.fillRect(x - bodyW / 2, vY, bodyW, volTop + volH - vY);
+    if (showVolume) {
+      for (let i = 0; i < candles.length; i++) {
+        const c = candles[i];
+        const x = toX(i);
+        const isUp = c.close >= c.open;
+        const vY = toVolY(c.volume);
+        ctx.fillStyle = isUp ? col.upVol : col.downVol;
+        ctx.fillRect(x - bodyW / 2, vY, bodyW, volTop + volH - vY);
+      }
     }
+    const timeLabelY = showVolume ? volTop + volH + 6 : priceTop + priceH + 6;
     ctx.fillStyle = col.text;
     ctx.font = FONT;
     ctx.textAlign = "center";
@@ -2712,7 +2734,7 @@ function renderKlineChart(container, candles, annotations) {
     const maxLabels = Math.max(2, Math.floor(chartW / 72));
     const step = Math.max(1, Math.ceil(candles.length / maxLabels));
     for (let i = 0; i < candles.length; i += step) {
-      ctx.fillText(fmtDate(candles[i].time, intraday), toX(i), volTop + volH + 6);
+      ctx.fillText(fmtDate(candles[i].time, intraday), toX(i), timeLabelY);
     }
   }
   requestAnimationFrame(draw);
@@ -2756,9 +2778,54 @@ function roundVol(v) {
   return Number(v.toFixed(4));
 }
 
-// src/settings.ts
+// src/yahoo.ts
 var import_obsidian2 = require("obsidian");
-var KlineSettingTab = class extends import_obsidian2.PluginSettingTab {
+var INTERVAL_MAP = {
+  "1w": "1wk",
+  "1M": "1mo"
+};
+async function fetchYahooKlines(symbol, interval, from, to) {
+  var _a, _b, _c, _d, _e, _f, _g, _h;
+  const yInterval = (_a = INTERVAL_MAP[interval]) != null ? _a : interval;
+  const params = new URLSearchParams({ interval: yInterval });
+  if (from) params.set("period1", String(Math.floor((/* @__PURE__ */ new Date(from + "T00:00:00Z")).getTime() / 1e3)));
+  if (to) params.set("period2", String(Math.floor((/* @__PURE__ */ new Date(to + "T23:59:59Z")).getTime() / 1e3)));
+  if (!from && !to) params.set("range", "6mo");
+  const resp = await (0, import_obsidian2.requestUrl)({
+    url: `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?${params}`
+  });
+  const body = resp.json;
+  const err = (_b = body == null ? void 0 : body.chart) == null ? void 0 : _b.error;
+  if (err) throw new Error(`Yahoo Finance: ${(_c = err.description) != null ? _c : err.code}`);
+  const result = (_e = (_d = body == null ? void 0 : body.chart) == null ? void 0 : _d.result) == null ? void 0 : _e[0];
+  if (!result) throw new Error("No data returned from Yahoo Finance");
+  const timestamps = result.timestamp;
+  const quote = (_g = (_f = result.indicators) == null ? void 0 : _f.quote) == null ? void 0 : _g[0];
+  if (!(timestamps == null ? void 0 : timestamps.length) || !quote) throw new Error("Empty response from Yahoo Finance");
+  const { open, high, low, close, volume } = quote;
+  const data = [];
+  for (let i = 0; i < timestamps.length; i++) {
+    if (open[i] == null || close[i] == null) continue;
+    data.push([
+      timestamps[i],
+      Number(open[i]),
+      Number(high[i]),
+      Number(low[i]),
+      Number(close[i]),
+      roundVol2(Number((_h = volume[i]) != null ? _h : 0))
+    ]);
+  }
+  if (data.length === 0) throw new Error("No valid candles \u2014 check symbol and date range");
+  return data;
+}
+function roundVol2(v) {
+  if (v >= 1) return Math.round(v);
+  return Number(v.toFixed(4));
+}
+
+// src/settings.ts
+var import_obsidian3 = require("obsidian");
+var KlineSettingTab = class extends import_obsidian3.PluginSettingTab {
   constructor(plugin) {
     super(plugin.app, plugin);
     this.plugin = plugin;
@@ -2767,24 +2834,34 @@ var KlineSettingTab = class extends import_obsidian2.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "Kline Charts" });
-    new import_obsidian2.Setting(containerEl).setName("Default data provider").setDesc("Data source for fetching K-line data").addDropdown(
-      (dd) => dd.addOption("binance", "Binance").addOption("alphavantage", "Alpha Vantage (coming soon)").setValue(this.plugin.settings.defaultProvider).onChange(async (v) => {
+    new import_obsidian3.Setting(containerEl).setName("Default data provider").setDesc("Data source for fetching K-line data").addDropdown(
+      (dd) => dd.addOption("binance", "Binance (crypto)").addOption("yahoo", "Yahoo Finance (stocks / ETF / forex / crypto)").setValue(this.plugin.settings.defaultProvider).onChange(async (v) => {
         this.plugin.settings.defaultProvider = v;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian3.Setting(containerEl).setName("Default interval").setDesc("Used when interval is not specified in the code block").addDropdown(
+      (dd) => dd.addOption("1d", "1 Day").addOption("4h", "4 Hours").addOption("1h", "1 Hour").addOption("15m", "15 Minutes").addOption("1w", "1 Week").addOption("1M", "1 Month").setValue(this.plugin.settings.defaultInterval).onChange(async (v) => {
+        this.plugin.settings.defaultInterval = v;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian3.Setting(containerEl).setName("Chart height").setDesc(`${this.plugin.settings.chartHeight}px`).addSlider(
+      (sl) => sl.setLimits(200, 600, 20).setValue(this.plugin.settings.chartHeight).onChange(async (v) => {
+        this.plugin.settings.chartHeight = v;
         await this.plugin.saveSettings();
         this.display();
       })
     );
-    if (this.plugin.settings.defaultProvider === "alphavantage") {
-      new import_obsidian2.Setting(containerEl).setName("Alpha Vantage API key").addText(
-        (text) => text.setPlaceholder("Enter API key").setValue(this.plugin.settings.alphaVantageKey).onChange(async (v) => {
-          this.plugin.settings.alphaVantageKey = v;
-          await this.plugin.saveSettings();
-        })
-      );
-    }
-    new import_obsidian2.Setting(containerEl).setName("Default interval").setDesc("Used when interval is not specified in the code block").addDropdown(
-      (dd) => dd.addOption("1d", "1 Day").addOption("4h", "4 Hours").addOption("1h", "1 Hour").addOption("15m", "15 Minutes").addOption("1w", "1 Week").addOption("1M", "1 Month").setValue(this.plugin.settings.defaultInterval).onChange(async (v) => {
-        this.plugin.settings.defaultInterval = v;
+    new import_obsidian3.Setting(containerEl).setName("Show volume").setDesc("Display volume bars below the chart").addToggle(
+      (tg) => tg.setValue(this.plugin.settings.showVolume).onChange(async (v) => {
+        this.plugin.settings.showVolume = v;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian3.Setting(containerEl).setName("Color style").setDesc("Candlestick color convention").addDropdown(
+      (dd) => dd.addOption("international", "International (green up, red down)").addOption("cn", "CN (red up, green down)").setValue(this.plugin.settings.colorStyle).onChange(async (v) => {
+        this.plugin.settings.colorStyle = v;
         await this.plugin.saveSettings();
       })
     );
@@ -2794,13 +2871,14 @@ var KlineSettingTab = class extends import_obsidian2.PluginSettingTab {
 // src/types.ts
 var DEFAULT_SETTINGS = {
   defaultProvider: "binance",
-  alphaVantageKey: "",
   defaultInterval: "1d",
-  language: "auto"
+  chartHeight: 380,
+  showVolume: true,
+  colorStyle: "international"
 };
 
 // main.ts
-var KlineChartsPlugin = class extends import_obsidian3.Plugin {
+var KlineChartsPlugin = class extends import_obsidian4.Plugin {
   constructor() {
     super(...arguments);
     this.settings = DEFAULT_SETTINGS;
@@ -2821,7 +2899,7 @@ var KlineChartsPlugin = class extends import_obsidian3.Plugin {
     await this.saveData(this.settings);
   }
 };
-var KlineRenderChild = class extends import_obsidian3.MarkdownRenderChild {
+var KlineRenderChild = class extends import_obsidian4.MarkdownRenderChild {
   constructor(containerEl, source, plugin, ctx) {
     super(containerEl);
     this.cleanup = null;
@@ -2829,12 +2907,16 @@ var KlineRenderChild = class extends import_obsidian3.MarkdownRenderChild {
     this.plugin = plugin;
     this.ctx = ctx;
   }
+  get renderOptions() {
+    const s = this.plugin.settings;
+    return { chartHeight: s.chartHeight, showVolume: s.showVolume, colorStyle: s.colorStyle };
+  }
   render() {
     try {
       const config = parseKlineConfig(this.source);
       if (config.data && config.data.length > 0) {
         const candles = configToCandles(config);
-        this.cleanup = renderKlineChart(this.containerEl, candles, config.annotations);
+        this.cleanup = renderKlineChart(this.containerEl, candles, config.annotations, this.renderOptions);
       } else {
         renderNoData(this.containerEl, config, this.plugin.settings, () => this.fetchAndWriteBack(config));
       }
@@ -2852,11 +2934,11 @@ var KlineRenderChild = class extends import_obsidian3.MarkdownRenderChild {
       if (provider === "binance") {
         data = await fetchBinanceKlines(config.symbol, interval, config.from, config.to);
       } else {
-        throw new Error("Alpha Vantage provider is not yet implemented");
+        data = await fetchYahooKlines(config.symbol, interval, config.from, config.to);
       }
       await this.writeBack(data);
     } catch (e) {
-      renderError(this.containerEl, e.message);
+      renderError(this.containerEl, e.message, () => this.fetchAndWriteBack(config));
     }
   }
   async writeBack(data) {
@@ -2866,7 +2948,7 @@ var KlineRenderChild = class extends import_obsidian3.MarkdownRenderChild {
       return;
     }
     const file = this.plugin.app.vault.getAbstractFileByPath(this.ctx.sourcePath);
-    if (!file || !(file instanceof import_obsidian3.TFile)) {
+    if (!file || !(file instanceof import_obsidian4.TFile)) {
       renderError(this.containerEl, "Source file not found");
       return;
     }

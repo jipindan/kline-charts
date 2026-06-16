@@ -48,8 +48,8 @@ export function parseKlineConfig(source: string): KlineConfig {
 
   if (obj.provider) config.provider = obj.provider as any;
   if (obj.interval) config.interval = String(obj.interval);
-  if (obj.from) config.from = String(obj.from);
-  if (obj.to) config.to = String(obj.to);
+  if (obj.from) config.from = toDateStr(obj.from);
+  if (obj.to) config.to = toDateStr(obj.to);
   if (obj.annotations && Array.isArray(obj.annotations)) {
     config.annotations = (obj.annotations as any[]).map(normalizeAnnotation) as any;
   }

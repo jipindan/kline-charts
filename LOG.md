@@ -98,9 +98,32 @@ data:
 ```
 
 **待做**
-- P3：Settings + Binance provider + Fetch 按钮 + 写回代码块
 - P4：Alpha Vantage + i18n + 深浅色主题 + 报错 UX
 - P5：README/LICENSE + 上架合规 + 社区 PR
-- P3：Settings + Binance/AV provider + Fetch 按钮 + 写回代码块
-- P4：Alpha Vantage + i18n + 深浅色主题 + 报错 UX
-- P5：README/LICENSE + 上架合规 + 社区 PR
+
+---
+
+## 2026-06-16 · P3 Fetch + Settings + 写回
+
+**做了什么**
+- 新增 `src/binance.ts`：Binance 公共 API `/api/v3/klines` 拉取 K 线，用 Obsidian `requestUrl`（无 CORS 问题），volume 智能 round
+- 新增 `src/settings.ts`：插件 Settings tab（default provider: Binance / AV(coming soon)，default interval 下拉）
+- 更新 `main.ts`：`loadSettings/saveSettings`，注册 SettingTab；`KlineRenderChild` 增加 fetch + 写回逻辑
+- 更新 `src/renderer.ts`：`renderNoData` 新增 Fetch Data 按钮 + provider/interval 信息显示；新增 `renderLoading` 加载态（spinner）
+- 更新 `styles.css`：Fetch 按钮样式（`var(--interactive-accent)`）+ CSS spinner 动画
+- 修复 `src/parser.ts`：`from`/`to` 字段用 `toDateStr()` 转换，避免 js-yaml Date 对象 → 错误字符串
+
+**Fetch + 写回流程**
+1. 无 data 时渲染占位框 + Fetch Data 按钮
+2. 点击 → `fetchBinanceKlines(symbol, interval, from, to)` 调 Binance API
+3. 数据写回代码块：`ctx.getSectionInfo()` 定位 + `vault.process()` 替换内容
+4. Obsidian 自动重新渲染 → 图表出现
+
+**写回策略**
+- `appendData()` 函数：查找现有 `data:` 行，截断后重写；无 `data:` 则追尾
+- data 始终放在 YAML 末尾，保留用户手写的 header（symbol/interval/from/to/annotations）原始格式
+
+**验证**
+- ETHUSDT 1d 2024-06-01→06-30：Fetch 成功，30 根 K 线 + volume 渲染正确
+- Settings tab 正常显示，Binance / 1 Day 默认值正确
+- Bundle: 113KB（+7KB）

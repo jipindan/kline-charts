@@ -26,6 +26,30 @@
 
 .kline-fetch-btn {
   cursor: pointer;
+  padding: 6px 18px;
+  border-radius: 4px;
+  border: none;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-size: 0.85em;
+  font-weight: 500;
+}
+
+.kline-fetch-btn:hover {
+  opacity: 0.9;
+}
+
+.kline-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--background-modifier-border);
+  border-top-color: var(--interactive-accent);
+  border-radius: 50%;
+  animation: kline-spin 0.6s linear infinite;
+}
+
+@keyframes kline-spin {
+  to { transform: rotate(360deg); }
 }
 
 .kline-error {

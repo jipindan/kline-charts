@@ -27,7 +27,7 @@ __export(main_exports, {
   default: () => KlineChartsPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian = require("obsidian");
+var import_obsidian3 = require("obsidian");
 
 // node_modules/js-yaml/dist/js-yaml.mjs
 var __create = Object.create;
@@ -2428,8 +2428,8 @@ function parseKlineConfig(source) {
   const config = { symbol: obj.symbol.toUpperCase() };
   if (obj.provider) config.provider = obj.provider;
   if (obj.interval) config.interval = String(obj.interval);
-  if (obj.from) config.from = String(obj.from);
-  if (obj.to) config.to = String(obj.to);
+  if (obj.from) config.from = toDateStr(obj.from);
+  if (obj.to) config.to = toDateStr(obj.to);
   if (obj.annotations && Array.isArray(obj.annotations)) {
     config.annotations = obj.annotations.map(normalizeAnnotation);
   }
@@ -2503,14 +2503,26 @@ function renderError(container, message) {
   container.empty();
   container.createDiv({ cls: "kline-error", text: `\u26A0 ${message}` });
 }
-function renderNoData(container, config) {
-  var _a, _b;
+function renderNoData(container, config, settings, onFetch) {
+  var _a, _b, _c;
   container.empty();
   const el = container.createDiv({ cls: "kline-fetch-container" });
-  const parts = [config.symbol, (_a = config.interval) != null ? _a : "1d"];
-  if (config.from) parts.push(`${config.from} \u2192 ${(_b = config.to) != null ? _b : "?"}`);
+  const provider = (_a = config.provider) != null ? _a : settings.defaultProvider;
+  const interval = (_b = config.interval) != null ? _b : settings.defaultInterval;
+  const parts = [config.symbol, interval, provider];
+  if (config.from) parts.push(`${config.from} \u2192 ${(_c = config.to) != null ? _c : "now"}`);
   el.createDiv({ cls: "kline-fetch-meta", text: parts.join(" \xB7 ") });
-  el.createDiv({ cls: "kline-fetch-meta", text: "No data \u2014 Fetch will be available soon" });
+  const btn = el.createEl("button", { cls: "kline-fetch-btn", text: "Fetch Data" });
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    onFetch();
+  });
+}
+function renderLoading(container, config) {
+  container.empty();
+  const el = container.createDiv({ cls: "kline-fetch-container" });
+  el.createDiv({ cls: "kline-fetch-meta", text: `Fetching ${config.symbol}\u2026` });
+  el.createDiv({ cls: "kline-spinner" });
 }
 var PAD = { top: 20, right: 72, bottom: 36, left: 8 };
 var TOTAL_H = 380;
@@ -2709,25 +2721,113 @@ function renderKlineChart(container, candles, annotations) {
   return () => ro.disconnect();
 }
 
+// src/binance.ts
+var import_obsidian = require("obsidian");
+async function fetchBinanceKlines(symbol, interval, from, to) {
+  var _a;
+  const params = new URLSearchParams({
+    symbol: symbol.toUpperCase(),
+    interval,
+    limit: "1000"
+  });
+  if (from) params.set("startTime", String((/* @__PURE__ */ new Date(from + "T00:00:00Z")).getTime()));
+  if (to) params.set("endTime", String((/* @__PURE__ */ new Date(to + "T23:59:59.999Z")).getTime()));
+  const resp = await (0, import_obsidian.requestUrl)({
+    url: `https://api.binance.com/api/v3/klines?${params}`
+  });
+  const raw = resp.json;
+  if (!Array.isArray(raw)) {
+    throw new Error((_a = raw == null ? void 0 : raw.msg) != null ? _a : "Unexpected response from Binance");
+  }
+  if (raw.length === 0) {
+    throw new Error("No data returned \u2014 check symbol and date range");
+  }
+  return raw.map((k) => [
+    Math.floor(Number(k[0]) / 1e3),
+    Number(k[1]),
+    Number(k[2]),
+    Number(k[3]),
+    Number(k[4]),
+    roundVol(Number(k[5]))
+  ]);
+}
+function roundVol(v) {
+  if (v >= 1) return Math.round(v);
+  return Number(v.toFixed(4));
+}
+
+// src/settings.ts
+var import_obsidian2 = require("obsidian");
+var KlineSettingTab = class extends import_obsidian2.PluginSettingTab {
+  constructor(plugin) {
+    super(plugin.app, plugin);
+    this.plugin = plugin;
+  }
+  display() {
+    const { containerEl } = this;
+    containerEl.empty();
+    containerEl.createEl("h2", { text: "Kline Charts" });
+    new import_obsidian2.Setting(containerEl).setName("Default data provider").setDesc("Data source for fetching K-line data").addDropdown(
+      (dd) => dd.addOption("binance", "Binance").addOption("alphavantage", "Alpha Vantage (coming soon)").setValue(this.plugin.settings.defaultProvider).onChange(async (v) => {
+        this.plugin.settings.defaultProvider = v;
+        await this.plugin.saveSettings();
+        this.display();
+      })
+    );
+    if (this.plugin.settings.defaultProvider === "alphavantage") {
+      new import_obsidian2.Setting(containerEl).setName("Alpha Vantage API key").addText(
+        (text) => text.setPlaceholder("Enter API key").setValue(this.plugin.settings.alphaVantageKey).onChange(async (v) => {
+          this.plugin.settings.alphaVantageKey = v;
+          await this.plugin.saveSettings();
+        })
+      );
+    }
+    new import_obsidian2.Setting(containerEl).setName("Default interval").setDesc("Used when interval is not specified in the code block").addDropdown(
+      (dd) => dd.addOption("1d", "1 Day").addOption("4h", "4 Hours").addOption("1h", "1 Hour").addOption("15m", "15 Minutes").addOption("1w", "1 Week").addOption("1M", "1 Month").setValue(this.plugin.settings.defaultInterval).onChange(async (v) => {
+        this.plugin.settings.defaultInterval = v;
+        await this.plugin.saveSettings();
+      })
+    );
+  }
+};
+
+// src/types.ts
+var DEFAULT_SETTINGS = {
+  defaultProvider: "binance",
+  alphaVantageKey: "",
+  defaultInterval: "1d",
+  language: "auto"
+};
+
 // main.ts
-var KlineChartsPlugin = class extends import_obsidian.Plugin {
+var KlineChartsPlugin = class extends import_obsidian3.Plugin {
+  constructor() {
+    super(...arguments);
+    this.settings = DEFAULT_SETTINGS;
+  }
   async onload() {
-    console.log("kline-charts: loaded");
+    await this.loadSettings();
+    this.addSettingTab(new KlineSettingTab(this));
     this.registerMarkdownCodeBlockProcessor("kline", (source, el, ctx) => {
-      const child = new KlineRenderChild(el, source);
+      const child = new KlineRenderChild(el, source, this, ctx);
       ctx.addChild(child);
       child.render();
     });
   }
-  async onunload() {
-    console.log("kline-charts: unloaded");
+  async loadSettings() {
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+  }
+  async saveSettings() {
+    await this.saveData(this.settings);
   }
 };
-var KlineRenderChild = class extends import_obsidian.MarkdownRenderChild {
-  constructor(containerEl, source) {
+var KlineRenderChild = class extends import_obsidian3.MarkdownRenderChild {
+  constructor(containerEl, source, plugin, ctx) {
     super(containerEl);
     this.cleanup = null;
     this.source = source;
+    this.plugin = plugin;
+    this.ctx = ctx;
   }
   render() {
     try {
@@ -2736,11 +2836,51 @@ var KlineRenderChild = class extends import_obsidian.MarkdownRenderChild {
         const candles = configToCandles(config);
         this.cleanup = renderKlineChart(this.containerEl, candles, config.annotations);
       } else {
-        renderNoData(this.containerEl, config);
+        renderNoData(this.containerEl, config, this.plugin.settings, () => this.fetchAndWriteBack(config));
       }
     } catch (e) {
       renderError(this.containerEl, e.message);
     }
+  }
+  async fetchAndWriteBack(config) {
+    var _a, _b;
+    const provider = (_a = config.provider) != null ? _a : this.plugin.settings.defaultProvider;
+    const interval = (_b = config.interval) != null ? _b : this.plugin.settings.defaultInterval;
+    renderLoading(this.containerEl, config);
+    try {
+      let data;
+      if (provider === "binance") {
+        data = await fetchBinanceKlines(config.symbol, interval, config.from, config.to);
+      } else {
+        throw new Error("Alpha Vantage provider is not yet implemented");
+      }
+      await this.writeBack(data);
+    } catch (e) {
+      renderError(this.containerEl, e.message);
+    }
+  }
+  async writeBack(data) {
+    const info = this.ctx.getSectionInfo(this.containerEl);
+    if (!info) {
+      renderError(this.containerEl, "Cannot locate code block in source");
+      return;
+    }
+    const file = this.plugin.app.vault.getAbstractFileByPath(this.ctx.sourcePath);
+    if (!file || !(file instanceof import_obsidian3.TFile)) {
+      renderError(this.containerEl, "Source file not found");
+      return;
+    }
+    const { lineStart, lineEnd } = info;
+    await this.plugin.app.vault.process(file, (content) => {
+      const lines = content.split("\n");
+      const codeLines = lines.slice(lineStart + 1, lineEnd);
+      const newSource = appendData(codeLines.join("\n"), data);
+      return [
+        ...lines.slice(0, lineStart + 1),
+        ...newSource.split("\n"),
+        ...lines.slice(lineEnd)
+      ].join("\n");
+    });
   }
   onunload() {
     var _a;
@@ -2748,6 +2888,17 @@ var KlineRenderChild = class extends import_obsidian.MarkdownRenderChild {
     this.cleanup = null;
   }
 };
+function appendData(source, data) {
+  const lines = source.split("\n");
+  const idx = lines.findIndex((l) => /^data:/.test(l));
+  const header = idx >= 0 ? lines.slice(0, idx) : [...lines];
+  while (header.length > 0 && header[header.length - 1].trim() === "") header.pop();
+  const dataLines = ["data:"];
+  for (const row of data) {
+    dataLines.push(`  - [${row.join(", ")}]`);
+  }
+  return [...header, ...dataLines].join("\n");
+}
 /*! Bundled license information:
 
 js-yaml/dist/js-yaml.mjs:

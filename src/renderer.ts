@@ -1,4 +1,4 @@
-import { Candle, KlineConfig, Annotation, OhlcField } from './types';
+import { Candle, KlineConfig, KlinePluginSettings, Annotation, OhlcField } from './types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -54,13 +54,33 @@ export function renderError(container: HTMLElement, message: string): void {
   container.createDiv({ cls: 'kline-error', text: `⚠ ${message}` });
 }
 
-export function renderNoData(container: HTMLElement, config: KlineConfig): void {
+export function renderNoData(
+  container: HTMLElement,
+  config: KlineConfig,
+  settings: KlinePluginSettings,
+  onFetch: () => void,
+): void {
   container.empty();
   const el = container.createDiv({ cls: 'kline-fetch-container' });
-  const parts = [config.symbol, config.interval ?? '1d'];
-  if (config.from) parts.push(`${config.from} → ${config.to ?? '?'}`);
+
+  const provider = config.provider ?? settings.defaultProvider;
+  const interval = config.interval ?? settings.defaultInterval;
+  const parts = [config.symbol, interval, provider];
+  if (config.from) parts.push(`${config.from} → ${config.to ?? 'now'}`);
   el.createDiv({ cls: 'kline-fetch-meta', text: parts.join(' · ') });
-  el.createDiv({ cls: 'kline-fetch-meta', text: 'No data — Fetch will be available soon' });
+
+  const btn = el.createEl('button', { cls: 'kline-fetch-btn', text: 'Fetch Data' });
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    onFetch();
+  });
+}
+
+export function renderLoading(container: HTMLElement, config: KlineConfig): void {
+  container.empty();
+  const el = container.createDiv({ cls: 'kline-fetch-container' });
+  el.createDiv({ cls: 'kline-fetch-meta', text: `Fetching ${config.symbol}…` });
+  el.createDiv({ cls: 'kline-spinner' });
 }
 
 // ── Canvas chart renderer ─────────────────────────────────────────────────

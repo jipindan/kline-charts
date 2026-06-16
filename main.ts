@@ -32,7 +32,7 @@ class KlineRenderChild extends MarkdownRenderChild {
       const config = parseKlineConfig(this.source);
       if (config.data && config.data.length > 0) {
         const candles = configToCandles(config);
-        this.cleanup = renderKlineChart(this.containerEl, candles);
+        this.cleanup = renderKlineChart(this.containerEl, candles, config.annotations);
       } else {
         renderNoData(this.containerEl, config);
       }

@@ -9,8 +9,6 @@ export interface Candle {
 
 export type OhlcField = 'open' | 'high' | 'low' | 'close';
 
-export type AnnotationType = 'entry' | 'trendline' | 'sl' | 'tp';
-
 export interface EntryAnnotation {
   type: 'entry';
   date: string;
@@ -25,19 +23,17 @@ export interface TrendlineAnnotation {
   color?: string;
 }
 
-export interface SlAnnotation {
-  type: 'sl';
-  price: number;
+export interface PositionAnnotation {
+  type: 'position';
+  entry_date: string;
+  exit_date: string;
+  entry: number;
+  sl: number;
+  tp: number;
   label?: string;
 }
 
-export interface TpAnnotation {
-  type: 'tp';
-  price: number;
-  label?: string;
-}
-
-export type Annotation = EntryAnnotation | TrendlineAnnotation | SlAnnotation | TpAnnotation;
+export type Annotation = EntryAnnotation | TrendlineAnnotation | PositionAnnotation;
 
 export type DataProvider = 'binance' | 'alphavantage';
 

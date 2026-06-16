@@ -1,6 +1,31 @@
 import yaml from 'js-yaml';
 import { KlineConfig, Candle } from './types';
 
+/** js-yaml parses YYYY-MM-DD as a Date object — convert back to string */
+function toDateStr(val: unknown): string {
+  if (val instanceof Date) {
+    const y  = val.getUTCFullYear();
+    const m  = String(val.getUTCMonth() + 1).padStart(2, '0');
+    const d  = String(val.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return String(val);
+}
+
+function normalizeAnnotation(ann: Record<string, unknown>): Record<string, unknown> {
+  if (!ann || typeof ann !== 'object') return ann;
+  const a = { ...ann };
+  // entry: date field
+  if (a.date !== undefined) a.date = toDateStr(a.date);
+  // trendline: from/to are [date, field] tuples
+  if (Array.isArray(a.from)) a.from = [toDateStr(a.from[0]), a.from[1]];
+  if (Array.isArray(a.to))   a.to   = [toDateStr(a.to[0]),   a.to[1]];
+  // position: entry_date / exit_date
+  if (a.entry_date !== undefined) a.entry_date = toDateStr(a.entry_date);
+  if (a.exit_date !== undefined)  a.exit_date  = toDateStr(a.exit_date);
+  return a;
+}
+
 export function parseKlineConfig(source: string): KlineConfig {
   let raw: unknown;
   try {
@@ -26,7 +51,7 @@ export function parseKlineConfig(source: string): KlineConfig {
   if (obj.from) config.from = String(obj.from);
   if (obj.to) config.to = String(obj.to);
   if (obj.annotations && Array.isArray(obj.annotations)) {
-    config.annotations = obj.annotations as any;
+    config.annotations = (obj.annotations as any[]).map(normalizeAnnotation) as any;
   }
   if (obj.data && Array.isArray(obj.data)) {
     config.data = obj.data as number[][];

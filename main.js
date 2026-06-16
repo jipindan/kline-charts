@@ -2392,6 +2392,25 @@ var { Type, Schema, FAILSAFE_SCHEMA, JSON_SCHEMA, CORE_SCHEMA, DEFAULT_SCHEMA, l
 var index_vite_proxy_tmp_default = import_js_yaml.default;
 
 // src/parser.ts
+function toDateStr(val) {
+  if (val instanceof Date) {
+    const y = val.getUTCFullYear();
+    const m = String(val.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(val.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  return String(val);
+}
+function normalizeAnnotation(ann) {
+  if (!ann || typeof ann !== "object") return ann;
+  const a = { ...ann };
+  if (a.date !== void 0) a.date = toDateStr(a.date);
+  if (Array.isArray(a.from)) a.from = [toDateStr(a.from[0]), a.from[1]];
+  if (Array.isArray(a.to)) a.to = [toDateStr(a.to[0]), a.to[1]];
+  if (a.entry_date !== void 0) a.entry_date = toDateStr(a.entry_date);
+  if (a.exit_date !== void 0) a.exit_date = toDateStr(a.exit_date);
+  return a;
+}
 function parseKlineConfig(source) {
   let raw;
   try {
@@ -2412,7 +2431,7 @@ function parseKlineConfig(source) {
   if (obj.from) config.from = String(obj.from);
   if (obj.to) config.to = String(obj.to);
   if (obj.annotations && Array.isArray(obj.annotations)) {
-    config.annotations = obj.annotations;
+    config.annotations = obj.annotations.map(normalizeAnnotation);
   }
   if (obj.data && Array.isArray(obj.data)) {
     config.data = obj.data;
@@ -2448,7 +2467,16 @@ function getColors(dark) {
     up: "#26a69a",
     down: "#ef5350",
     upVol: "#26a69a4d",
-    downVol: "#ef53504d"
+    downVol: "#ef53504d",
+    entry: "#f59e0b",
+    trend: "#60a5fa",
+    // clean blue
+    posTP: "#26a69a20",
+    // TP box fill (green, very translucent)
+    posSL: "#ef535020",
+    // SL box fill (red, very translucent)
+    posTPTxt: "#26a69aCC",
+    posSLTxt: "#ef5350CC"
   };
 }
 function fmtPrice(price) {
@@ -2460,12 +2488,16 @@ function fmtPrice(price) {
 }
 function fmtDate(unix, intraday) {
   const d = new Date(unix * 1e3);
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
   if (!intraday) return `${mm}/${dd}`;
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mn = String(d.getMinutes()).padStart(2, "0");
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const mn = String(d.getUTCMinutes()).padStart(2, "0");
   return `${mm}/${dd} ${hh}:${mn}`;
+}
+function dayKey(unix) {
+  const d = new Date(unix * 1e3);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
 function renderError(container, message) {
   container.empty();
@@ -2487,7 +2519,81 @@ var VOL_GAP = 6;
 var FONT = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 var GRID_LINES = 5;
 var MAX_BODY_W = 14;
-function renderKlineChart(container, candles) {
+function drawAnnotations(ctx, annotations, candles, toX, toY, slotW, chartW, col) {
+  var _a, _b;
+  const dateMap = /* @__PURE__ */ new Map();
+  candles.forEach((c, i) => dateMap.set(dayKey(c.time), i));
+  for (const ann of annotations) {
+    if (ann.type === "position") {
+      const i1 = dateMap.get(ann.entry_date);
+      const i2 = dateMap.get(ann.exit_date);
+      if (i1 === void 0 || i2 === void 0) continue;
+      const xLeft = toX(i1);
+      const xRight = toX(i2);
+      const boxW = xRight - xLeft;
+      const yEntry = toY(ann.entry);
+      const yTP = toY(ann.tp);
+      const ySL = toY(ann.sl);
+      ctx.fillStyle = col.posTP;
+      ctx.fillRect(xLeft, yTP, boxW, yEntry - yTP);
+      ctx.fillStyle = col.posSL;
+      ctx.fillRect(xLeft, yEntry, boxW, ySL - yEntry);
+      ctx.font = FONT;
+      ctx.textBaseline = "bottom";
+      ctx.textAlign = "left";
+      ctx.fillStyle = col.posTPTxt;
+      ctx.fillText(`TP ${fmtPrice(ann.tp)}`, xLeft + 3, yTP - 2);
+      ctx.textBaseline = "top";
+      ctx.fillStyle = col.posSLTxt;
+      ctx.fillText(`SL ${fmtPrice(ann.sl)}`, xLeft + 3, ySL + 2);
+      if (ann.label) {
+        ctx.textBaseline = "bottom";
+        ctx.fillStyle = col.entry;
+        ctx.fillText(ann.label, xLeft + 3, yEntry - 3);
+      }
+    }
+    if (ann.type === "entry") {
+      const idx = dateMap.get(ann.date);
+      if (idx === void 0) continue;
+      const x = toX(idx);
+      const y = toY(ann.price);
+      const label = (_a = ann.label) != null ? _a : "Entry";
+      const S = 6;
+      ctx.fillStyle = col.entry;
+      ctx.beginPath();
+      ctx.moveTo(x, y - S);
+      ctx.lineTo(x - S, y + S);
+      ctx.lineTo(x + S, y + S);
+      ctx.closePath();
+      ctx.fill();
+      ctx.font = FONT;
+      ctx.fillStyle = col.entry;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(label, x, y - S - 3);
+    }
+    if (ann.type === "trendline") {
+      const [d1, f1] = ann.from;
+      const [d2, f2] = ann.to;
+      const i1 = dateMap.get(d1);
+      const i2 = dateMap.get(d2);
+      if (i1 === void 0 || i2 === void 0) continue;
+      const p1 = candles[i1][f1];
+      const p2 = candles[i2][f2];
+      const x1 = toX(i1), y1 = toY(p1);
+      const x2 = toX(i2), y2 = toY(p2);
+      const color = (_b = ann.color) != null ? _b : col.trend;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+  }
+}
+function renderKlineChart(container, candles, annotations) {
   container.empty();
   const wrapper = container.createDiv({ cls: "kline-chart-wrapper" });
   const canvas = wrapper.createEl("canvas");
@@ -2495,8 +2601,13 @@ function renderKlineChart(container, candles) {
   canvas.style.width = "100%";
   canvas.style.height = `${TOTAL_H}px`;
   const intraday = candles.length > 1 && candles[1].time - candles[0].time < 86400;
-  const pMax = Math.max(...candles.map((c) => c.high));
-  const pMin = Math.min(...candles.map((c) => c.low));
+  const annPrices = (annotations != null ? annotations : []).flatMap((a) => {
+    if (a.type === "position") return [a.entry, a.sl, a.tp];
+    if (a.type === "entry") return [a.price];
+    return [];
+  });
+  const pMax = Math.max(...candles.map((c) => c.high), ...annPrices);
+  const pMin = Math.min(...candles.map((c) => c.low), ...annPrices);
   const pPad = (pMax - pMin) * 0.05;
   const yMax = pMax + pPad;
   const yMin = pMin - pPad;
@@ -2528,19 +2639,19 @@ function renderKlineChart(container, candles) {
       return volTop + volH * (1 - vol / vMax);
     }
     ctx.font = FONT;
-    ctx.fillStyle = col.text;
-    ctx.textAlign = "left";
-    ctx.textBaseline = "middle";
     for (let g = 0; g <= GRID_LINES; g++) {
       const price = yMin + g / GRID_LINES * (yMax - yMin);
       const y = toY(price);
       ctx.strokeStyle = col.grid;
       ctx.lineWidth = 0.5;
+      ctx.setLineDash([]);
       ctx.beginPath();
       ctx.moveTo(PAD.left, y);
       ctx.lineTo(PAD.left + chartW, y);
       ctx.stroke();
       ctx.fillStyle = col.text;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
       ctx.fillText(fmtPrice(price), PAD.left + chartW + 4, y);
     }
     ctx.strokeStyle = col.grid;
@@ -2549,6 +2660,14 @@ function renderKlineChart(container, candles) {
     ctx.moveTo(PAD.left, volTop);
     ctx.lineTo(PAD.left + chartW, volTop);
     ctx.stroke();
+    if (annotations && annotations.length > 0) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(PAD.left, PAD.top, chartW, priceH);
+      ctx.clip();
+      drawAnnotations(ctx, annotations, candles, toX, toY, slotW, chartW, col);
+      ctx.restore();
+    }
     for (let i = 0; i < candles.length; i++) {
       const c = candles[i];
       const x = toX(i);
@@ -2556,6 +2675,7 @@ function renderKlineChart(container, candles) {
       const clr = isUp ? col.up : col.down;
       ctx.strokeStyle = clr;
       ctx.lineWidth = 1;
+      ctx.setLineDash([]);
       ctx.beginPath();
       ctx.moveTo(x, toY(c.high));
       ctx.lineTo(x, toY(c.low));
@@ -2574,9 +2694,9 @@ function renderKlineChart(container, candles) {
       ctx.fillRect(x - bodyW / 2, vY, bodyW, volTop + volH - vY);
     }
     ctx.fillStyle = col.text;
+    ctx.font = FONT;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    ctx.font = FONT;
     const maxLabels = Math.max(2, Math.floor(chartW / 72));
     const step = Math.max(1, Math.ceil(candles.length / maxLabels));
     for (let i = 0; i < candles.length; i += step) {
@@ -2614,7 +2734,7 @@ var KlineRenderChild = class extends import_obsidian.MarkdownRenderChild {
       const config = parseKlineConfig(this.source);
       if (config.data && config.data.length > 0) {
         const candles = configToCandles(config);
-        this.cleanup = renderKlineChart(this.containerEl, candles);
+        this.cleanup = renderKlineChart(this.containerEl, candles, config.annotations);
       } else {
         renderNoData(this.containerEl, config);
       }

@@ -35,7 +35,7 @@ const context = await esbuild.context({
   logLevel: "info",
   sourcemap: prod ? false : "inline",
   treeShaking: true,
-  outfile: "main.js",
+  outfile: "/Users/junyixia/Library/Mobile Documents/iCloud~md~obsidian/Documents/课业笔记/.obsidian/plugins/kline-charts/main.js",
   platform: "browser",
 });
 

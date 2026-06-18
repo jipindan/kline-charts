@@ -148,3 +148,53 @@ data:
 - 新增 `LICENSE`：MIT
 - i18n 模块（`src/i18n.ts`）曾添加 en/zh 双语，后因不必要删除，改回纯英文硬编码
 - Bundle: 117KB
+
+---
+
+## 2026-06-16 · P5 Security + Architecture + Features 大升级
+
+**Security 修复（5 项）**
+- S1：写回竞态修复 — `vault.process()` 内用 `findKlineBlock()` 按内容重新定位代码块，不再依赖陈旧行号
+- S2：Fetch 按钮节流 — `isFetching` flag 防重复请求
+- S3：数据量上限 — `configToCandles()` 和 Yahoo provider 均 cap 2000 条，超出显示截断提示
+- S4：annotation color 白名单 — 只接受 `#hex` 格式，不合法删除
+- S5：README 加 Yahoo Finance 非官方 API 风险声明
+
+**Architecture 重构（7 项）**
+- A1：Provider 接口抽象 — `DataFetcher` interface + `getProvider()` 注册表，替代 if/else；`roundVol` 统一到 `providers.ts`
+- A2：`appendData` 从 `main.ts` 移到 `parser.ts`
+- A3：Renderer 拆分 — `draw()` 拆为 `drawGrid`/`drawCandles`/`drawVolume`/`drawTimeAxis`/`drawAnnotations`，共享 `ChartLayout` 对象
+- A4：ResizeObserver 节流 — rAF debounce
+- A5：主题切换响应 — MutationObserver 监听 `document.body` class 变化，实时更新颜色
+- A6：Parser 类型校验 — provider/interval/annotation type 校验，消除 `as any`
+- A7：`isDesktopOnly: false` — 支持 Mobile
+
+**新功能（6 项）**
+- F1：Hover crosshair + tooltip — overlay canvas 十字线 + HTML tooltip（Date/O/H/L/C/V/Chg%）
+- F2：Per-block settings — YAML 里 `height`/`volume`/`color` 覆盖全局设置
+- F3：数据缓存 — plugin 级 Map 缓存，10 分钟 TTL
+- F4：MA/EMA 指标叠加 — `src/indicators.ts`，YAML `indicators` 字段，图例显示
+- F5：Multi-symbol overlay — `compare` 字段，归一化百分比折线 + 右上角 legend
+- F6：Drawing tool — 铅笔图标（hover 显示），点击两点画趋势线，自动写回 YAML annotations
+
+**技术决策**
+- 双 canvas 架构（base + overlay）：crosshair/drawing 不重绘整张图
+- 旧 `binance.ts`/`yahoo.ts` 已被 `providers.ts` 取代，可删除
+- 空目录 `src/providers/` 可删除
+- Bundle: 138KB
+
+---
+
+## 2026-06-16 · Bug 修复轮（视觉验证后）
+
+**已修**
+- 错误信息不可见：`--text-error` 与 `--background-modifier-error` 在当前主题下颜色相近导致文字消失 → 改为固定色 `#ef5350` + 半透明红背景 + 边框
+- 铅笔按钮遮住 Obsidian `</>` 原生按钮：从 `top:6px right:6px` 移到 `bottom:44px right:6px`
+- 铅笔 emoji `✏` 丑 → 改用 Obsidian 原生 `setIcon(pencilBtn, 'pencil-line')` Lucide 图标
+- Drawing write-back 在 compare 模式下失效：`fetchCompareData` 重绘时未传 `onDrawLine` 回调 → 补上
+- `appendAnnotation` 插入位置 bug：跳行逻辑 `/^\s+-/` 只跳 `- ` 开头行，不跳续行（`from:`/`to:` 等），导致新 annotation 插入到已有 item 中间造成 YAML duplicate key → 改为 `/^\s/` 跳过所有缩进行
+
+**发现**
+- `styles.css` 不在项目根目录，直接存在 Obsidian 插件安装目录 `.obsidian/plugins/kline-charts/` 中，已更新 `CLAUDE.md` 记录路径
+
+**仍有 bug，明日继续**

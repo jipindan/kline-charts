@@ -38,6 +38,12 @@ export type Annotation = EntryAnnotation | TrendlineAnnotation | PositionAnnotat
 export type DataProvider = 'binance' | 'yahoo';
 export type ColorStyle = 'international' | 'cn';
 
+export interface IndicatorDef {
+  ma?: number;
+  ema?: number;
+  color?: string;
+}
+
 export interface KlineConfig {
   symbol: string;
   provider?: DataProvider;
@@ -46,6 +52,17 @@ export interface KlineConfig {
   to?: string;
   annotations?: Annotation[];
   data?: (number[])[];
+  height?: number;
+  volume?: boolean;
+  color?: ColorStyle;
+  indicators?: IndicatorDef[];
+  compare?: string[];
+}
+
+export interface CompareLine {
+  symbol: string;
+  color: string;
+  pctValues: (number | null)[];
 }
 
 export interface RenderOptions {

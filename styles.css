@@ -52,14 +52,96 @@
   to { transform: rotate(360deg); }
 }
 
+.kline-overlay {
+  cursor: crosshair;
+}
+
+.kline-tooltip {
+  display: none;
+  position: absolute;
+  z-index: 10;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 0.8em;
+  line-height: 1.6;
+  min-width: 110px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  pointer-events: none;
+}
+
+.kline-tooltip-date {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--text-normal);
+}
+
+.kline-tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-muted);
+}
+
+.kline-tooltip-row span:last-child {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-normal);
+}
+
+.kline-pencil-btn {
+  position: absolute;
+  bottom: 44px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  z-index: 11;
+}
+
+.kline-pencil-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.kline-chart-wrapper:hover .kline-pencil-btn {
+  opacity: 0.7;
+}
+
+.kline-pencil-btn:hover {
+  opacity: 1 !important;
+}
+
+.kline-pencil-active {
+  opacity: 1 !important;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.kline-truncation-notice {
+  text-align: center;
+  font-size: 0.8em;
+  color: var(--text-muted);
+  padding: 4px 0;
+}
+
 .kline-error {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 10px 14px;
   border-radius: 6px;
-  background: var(--background-modifier-error);
-  color: var(--text-error);
+  background: rgba(239, 83, 80, 0.15);
+  border: 1px solid rgba(239, 83, 80, 0.4);
+  color: #ef5350;
   font-size: 0.9em;
 }
 

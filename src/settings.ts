@@ -13,36 +13,10 @@ export class KlineSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl('h2', { text: 'Kline Charts' });
-
-    new Setting(containerEl)
-      .setName('Default data provider')
-      .setDesc('Data source for fetching K-line data')
-      .addDropdown(dd => dd
-        .addOption('binance', 'Binance (crypto)')
-        .addOption('yahoo', 'Yahoo Finance (stocks / ETF / forex / crypto)')
-        .setValue(this.plugin.settings.defaultProvider)
-        .onChange(async (v) => {
-          this.plugin.settings.defaultProvider = v as any;
-          await this.plugin.saveSettings();
-        })
-      );
-
-    new Setting(containerEl)
-      .setName('Default interval')
-      .setDesc('Used when interval is not specified in the code block')
-      .addDropdown(dd => dd
-        .addOption('1d', '1 Day')
-        .addOption('4h', '4 Hours')
-        .addOption('1h', '1 Hour')
-        .addOption('15m', '15 Minutes')
-        .addOption('1w', '1 Week')
-        .addOption('1M', '1 Month')
-        .setValue(this.plugin.settings.defaultInterval)
-        .onChange(async (v) => {
-          this.plugin.settings.defaultInterval = v;
-          await this.plugin.saveSettings();
-        })
-      );
+    containerEl.createEl('p', {
+      text: 'Use provider: binance (crypto) or provider: yahoo (stocks / ETF / forex / crypto) in your code blocks. No API key needed — both use public data.',
+      cls: 'kline-settings-hint',
+    });
 
     new Setting(containerEl)
       .setName('Chart height')

@@ -160,3 +160,10 @@
   background: var(--text-error);
   color: var(--text-on-accent);
 }
+
+/* ── Settings ── */
+.kline-settings-hint {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  margin: -8px 0 12px;
+}

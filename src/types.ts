@@ -21,6 +21,7 @@ export interface TrendlineAnnotation {
   from: [string, OhlcField];
   to: [string, OhlcField];
   color?: string;
+  extend?: boolean;
 }
 
 export interface PositionAnnotation {
@@ -72,16 +73,12 @@ export interface RenderOptions {
 }
 
 export interface KlinePluginSettings {
-  defaultProvider: DataProvider;
-  defaultInterval: string;
   chartHeight: number;
   showVolume: boolean;
   colorStyle: ColorStyle;
 }
 
 export const DEFAULT_SETTINGS: KlinePluginSettings = {
-  defaultProvider: 'binance',
-  defaultInterval: '1d',
   chartHeight: 380,
   showVolume: true,
   colorStyle: 'international',

@@ -1,3 +1,13 @@
+# dependencies
 node_modules/
+
+# build output (esbuild writes straight to the Obsidian plugin dir)
 main.js
+*.js.map
+*.tsbuildinfo
+
+# dev notes (not shipped)
+LOG.md
+
+# OS
 .DS_Store

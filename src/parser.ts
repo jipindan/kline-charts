@@ -1,6 +1,21 @@
 import yaml from 'js-yaml';
 import { KlineConfig, Candle, DataProvider, ColorStyle, Annotation, OhlcField, IndicatorDef } from './types';
 
+const COLOR_NAMES: Record<string, string> = {
+  red:    '#ef5350', green:  '#26a69a', blue:   '#60a5fa',
+  yellow: '#facc15', orange: '#f97316', purple: '#a78bfa',
+  pink:   '#f472b6', white:  '#f8fafc', gray:   '#6b7280',
+  cyan:   '#06b6d4', lime:   '#84cc16', amber:  '#f59e0b',
+};
+const VALID_HEX_COLOR_RE = /^#[0-9a-fA-F]{3,8}$/;
+
+function resolveColor(raw: string): string | undefined {
+  const lower = raw.toLowerCase().trim();
+  if (COLOR_NAMES[lower]) return COLOR_NAMES[lower];
+  if (VALID_HEX_COLOR_RE.test(raw)) return raw;
+  return undefined;
+}
+
 const VALID_PROVIDERS: DataProvider[] = ['binance', 'yahoo'];
 const VALID_INTERVAL = /^\d+[mhdwM]$/;
 const VALID_ANNOTATION_TYPES = ['entry', 'trendline', 'position'];
@@ -18,8 +33,6 @@ function toDateStr(val: unknown): string {
   return String(val);
 }
 
-const VALID_HEX_COLOR = /^#[0-9a-fA-F]{3,8}$/;
-
 function normalizeAnnotation(ann: Record<string, unknown>): Record<string, unknown> {
   if (!ann || typeof ann !== 'object') return ann;
   const a = { ...ann };
@@ -28,8 +41,9 @@ function normalizeAnnotation(ann: Record<string, unknown>): Record<string, unkno
   if (Array.isArray(a.to))   a.to   = [toDateStr(a.to[0]),   a.to[1]];
   if (a.entry_date !== undefined) a.entry_date = toDateStr(a.entry_date);
   if (a.exit_date !== undefined)  a.exit_date  = toDateStr(a.exit_date);
-  if (a.color !== undefined && (typeof a.color !== 'string' || !VALID_HEX_COLOR.test(a.color))) {
-    delete a.color;
+  if (a.color !== undefined) {
+    const resolved = typeof a.color === 'string' ? resolveColor(a.color) : undefined;
+    if (resolved) a.color = resolved; else delete a.color;
   }
   return a;
 }
@@ -54,20 +68,22 @@ export function parseKlineConfig(source: string): KlineConfig {
 
   const config: KlineConfig = { symbol: obj.symbol.toUpperCase() };
 
-  if (obj.provider) {
-    const p = String(obj.provider);
-    if (!VALID_PROVIDERS.includes(p as DataProvider)) {
-      throw new Error(`Unknown provider: ${p} (expected: ${VALID_PROVIDERS.join(', ')})`);
-    }
-    config.provider = p as DataProvider;
+  if (!obj.provider) {
+    throw new Error('Missing required field: provider (binance or yahoo)');
   }
-  if (obj.interval) {
-    const iv = String(obj.interval);
-    if (!VALID_INTERVAL.test(iv)) {
-      throw new Error(`Invalid interval: ${iv} (expected format like 1d, 4h, 15m, 1w, 1M)`);
-    }
-    config.interval = iv;
+  const p = String(obj.provider).toLowerCase();
+  if (!VALID_PROVIDERS.includes(p as DataProvider)) {
+    throw new Error(`Unknown provider: "${p}" — expected: ${VALID_PROVIDERS.join(', ')}`);
   }
+  config.provider = p as DataProvider;
+  if (!obj.interval) {
+    throw new Error('Missing required field: interval (e.g. interval: 1d, 4h, 15m, 1w, 1M)');
+  }
+  const iv = String(obj.interval);
+  if (!VALID_INTERVAL.test(iv)) {
+    throw new Error(`Invalid interval: ${iv} (expected format like 1d, 4h, 15m, 1w, 1M)`);
+  }
+  config.interval = iv;
   if (obj.from) config.from = toDateStr(obj.from);
   if (obj.to) config.to = toDateStr(obj.to);
   if (obj.annotations && Array.isArray(obj.annotations)) {
@@ -96,7 +112,7 @@ export function parseKlineConfig(source: string): KlineConfig {
         const def: IndicatorDef = {};
         if (ind.ma !== undefined) def.ma = Number(ind.ma);
         if (ind.ema !== undefined) def.ema = Number(ind.ema);
-        if (typeof ind.color === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(ind.color)) def.color = ind.color;
+        if (typeof ind.color === 'string') def.color = resolveColor(ind.color);
         return def;
       })
       .filter(d => d.ma !== undefined || d.ema !== undefined);

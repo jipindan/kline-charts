@@ -1,7 +1,7 @@
 import { setIcon } from 'obsidian';
 import { Candle, KlineConfig, KlinePluginSettings, RenderOptions, ColorStyle, Annotation, OhlcField, IndicatorDef, CompareLine } from './types';
 import { IndicatorLine, computeIndicators } from './indicators';
-import { DrawingState, snapToCandle, drawPreviewLine, formatDrawnAnnotation } from './drawing';
+import { DrawingState, snapToCandle, drawPreviewLine, formatDrawnAnnotation, extendLineToChart } from './drawing';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -71,15 +71,12 @@ export function renderError(container: HTMLElement, message: string, onRetry?: (
 export function renderNoData(
   container: HTMLElement,
   config: KlineConfig,
-  settings: KlinePluginSettings,
   onFetch: () => void,
 ): void {
   container.empty();
   const el = container.createDiv({ cls: 'kline-fetch-container' });
 
-  const provider = config.provider ?? settings.defaultProvider;
-  const interval = config.interval ?? settings.defaultInterval;
-  const parts = [config.symbol, interval, provider];
+  const parts = [config.symbol, config.interval!, config.provider!];
   if (config.from) parts.push(`${config.from} → ${config.to ?? 'now'}`);
   el.createDiv({ cls: 'kline-fetch-meta', text: parts.join(' · ') });
 
@@ -331,16 +328,23 @@ function drawAnnotations(
 
       const p1 = candles[i1][f1 as OhlcField] as number;
       const p2 = candles[i2][f2 as OhlcField] as number;
-      const x1 = layout.toX(i1), y1 = layout.toY(p1);
-      const x2 = layout.toX(i2), y2 = layout.toY(p2);
-      const color = ann.color ?? col.trend;
+      const ax1 = layout.toX(i1), ay1 = layout.toY(p1);
+      const ax2 = layout.toX(i2), ay2 = layout.toY(p2);
+      const autoColor = p2 > p1 ? col.up : p2 < p1 ? col.down : col.trend;
+      const color = ann.color ?? autoColor;
+
+      let lx1 = ax1, ly1 = ay1, lx2 = ax2, ly2 = ay2;
+      if (ann.extend) {
+        const ext = extendLineToChart(ax1, ay1, ax2, ay2, PAD.left, PAD.left + layout.chartW);
+        lx1 = ext.x1; ly1 = ext.y1; lx2 = ext.x2; ly2 = ext.y2;
+      }
 
       ctx.strokeStyle = color;
       ctx.lineWidth   = 1.5;
       ctx.setLineDash([]);
       ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
+      ctx.moveTo(lx1, ly1);
+      ctx.lineTo(lx2, ly2);
       ctx.stroke();
     }
   }
@@ -484,11 +488,10 @@ function drawCrosshair(
   ctx: CanvasRenderingContext2D,
   layout: ChartLayout,
   col: Colors,
-  candle: Candle,
+  mouseY: number,
   idx: number,
 ) {
   const x = layout.toX(idx);
-  const y = layout.toY(candle.close);
 
   ctx.strokeStyle = col.text;
   ctx.lineWidth   = 0.5;
@@ -499,10 +502,20 @@ function drawCrosshair(
   ctx.lineTo(x, layout.totalH - PAD.bottom);
   ctx.stroke();
 
-  ctx.beginPath();
-  ctx.moveTo(PAD.left, y);
-  ctx.lineTo(PAD.left + layout.chartW, y);
-  ctx.stroke();
+  if (mouseY >= layout.priceTop && mouseY <= layout.priceTop + layout.priceH) {
+    ctx.beginPath();
+    ctx.moveTo(PAD.left, mouseY);
+    ctx.lineTo(PAD.left + layout.chartW, mouseY);
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+    const price = layout.yMax - (mouseY - layout.priceTop) / layout.priceH * (layout.yMax - layout.yMin);
+    ctx.font         = FONT;
+    ctx.fillStyle    = col.text;
+    ctx.textAlign    = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(fmtPrice(price), PAD.left + layout.chartW + 4, mouseY);
+  }
 
   ctx.setLineDash([]);
 }
@@ -647,10 +660,15 @@ export function renderKlineChart(
       return;
     }
 
+    const dpr = window.devicePixelRatio || 1;
+    const octx = overlay.getContext('2d')!;
+    const col  = getColors(isDarkTheme(), options.colorStyle);
+
     if (drawState.active && drawState.start) {
-      const dpr = window.devicePixelRatio || 1;
-      const octx = overlay.getContext('2d')!;
-      drawPreviewLine(octx, dpr, drawState.start, mx, my, layout);
+      const snap = snapToCandle(mx, my, candles, layout);
+      const endX = snap ? layout.toX(snap.candleIdx) : mx;
+      const endY = snap ? layout.toY(snap.price)     : my;
+      drawPreviewLine(octx, dpr, drawState.start, endX, endY, layout, e.shiftKey);
       tooltip.style.display = 'none';
       return;
     }
@@ -658,14 +676,32 @@ export function renderKlineChart(
     const idx = Math.round((mx - PAD.left) / layout.slotW - 0.5);
     if (idx < 0 || idx >= candles.length) { clearOverlay(); return; }
 
-    const candle = candles[idx];
-    const col = getColors(isDarkTheme(), options.colorStyle);
-    const dpr = window.devicePixelRatio || 1;
+    if (drawState.active) {
+      const snap = snapToCandle(mx, my, candles, layout);
+      const snapX = snap ? layout.toX(snap.candleIdx) : mx;
+      const snapY = snap ? layout.toY(snap.price)     : my;
+      const snapIdx = snap?.candleIdx ?? idx;
+      octx.clearRect(0, 0, overlay.width, overlay.height);
+      octx.scale(dpr, dpr);
+      drawCrosshair(octx, layout, col, snapY, snapIdx);
+      if (snap) {
+        octx.fillStyle   = '#60a5fa';
+        octx.strokeStyle = col.grid;
+        octx.lineWidth   = 1.5;
+        octx.beginPath();
+        octx.arc(snapX, snapY, 5, 0, Math.PI * 2);
+        octx.fill();
+        octx.stroke();
+      }
+      octx.setTransform(1, 0, 0, 1, 0, 0);
+      tooltip.style.display = 'none';
+      return;
+    }
 
-    const octx = overlay.getContext('2d')!;
+    const candle = candles[idx];
     octx.clearRect(0, 0, overlay.width, overlay.height);
     octx.scale(dpr, dpr);
-    drawCrosshair(octx, layout, col, candle, idx);
+    drawCrosshair(octx, layout, col, my, idx);
     octx.setTransform(1, 0, 0, 1, 0, 0);
 
     tooltip.innerHTML = formatTooltip(candle, idx > 0 ? candles[idx - 1] : null, layout.intraday);
@@ -691,7 +727,7 @@ export function renderKlineChart(
     } else {
       const end = snap;
       if (onDrawLine) {
-        onDrawLine(formatDrawnAnnotation(drawState.start, end, candles));
+        onDrawLine(formatDrawnAnnotation(drawState.start, end, candles, e.shiftKey));
       }
       drawState.start  = null;
       drawState.active = false;

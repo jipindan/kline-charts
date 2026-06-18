@@ -99,7 +99,7 @@ class KlineRenderChild extends MarkdownRenderChild {
           this.fetchCompareData(config, candles);
         }
       } else {
-        renderNoData(this.containerEl, config, this.plugin.settings, () => this.fetchAndWriteBack(config));
+        renderNoData(this.containerEl, config, () => this.fetchAndWriteBack(config));
       }
     } catch (e) {
       renderError(this.containerEl, (e as Error).message);
@@ -109,8 +109,8 @@ class KlineRenderChild extends MarkdownRenderChild {
   private async fetchCompareData(config: KlineConfig, mainCandles: import('./src/types').Candle[]) {
     if (!config.compare || config.compare.length === 0) return;
 
-    const provider = config.provider ?? this.plugin.settings.defaultProvider;
-    const interval = config.interval ?? this.plugin.settings.defaultInterval;
+    const provider = config.provider!;
+    const interval = config.interval!;
     const compareData = new Map<string, number[][]>();
 
     const fetches = config.compare.map(async (symbol) => {
@@ -144,8 +144,8 @@ class KlineRenderChild extends MarkdownRenderChild {
     if (this.isFetching) return;
     this.isFetching = true;
 
-    const provider = config.provider ?? this.plugin.settings.defaultProvider;
-    const interval = config.interval ?? this.plugin.settings.defaultInterval;
+    const provider = config.provider!;
+    const interval = config.interval!;
     const cacheKey = `${provider}:${config.symbol}:${interval}:${config.from ?? ''}:${config.to ?? ''}`;
 
     renderLoading(this.containerEl, config);
